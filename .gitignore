@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.local
+.env.production
+
+logs/
+*.log
+
+coverage/
+
+.DS_Store
+
+dist/
+build/
