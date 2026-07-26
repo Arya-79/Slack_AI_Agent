@@ -24,6 +24,7 @@ Express, and PostgreSQL.
 - [Setup](#setup)
 - [Running](#running)
 - [Configuration](#configuration)
+- [Slack commands](#slack-commands)
 - [HTTP API](#http-api)
 - [Testing & quality](#testing--quality)
 - [Deployment](#deployment)
@@ -168,11 +169,12 @@ tested without a live connection.
 
 ### Slack app configuration
 
-| Setting             | Value                                                           |
-| ------------------- | --------------------------------------------------------------- |
-| Socket Mode         | Enabled (needs an app-level token with `connections:write`)     |
-| Event subscriptions | `team_join`, `member_joined_channel`                            |
-| Bot OAuth scopes    | `users:read`, `users:read.email`, `chat:write`, `channels:read` |
+| Setting             | Value                                                                       |
+| ------------------- | --------------------------------------------------------------------------- |
+| Socket Mode         | Enabled (needs an app-level token with `connections:write`)                 |
+| Event subscriptions | `team_join`, `member_joined_channel`                                        |
+| Slash command       | `/analyze` (optional — see [Slack commands](#slack-commands))               |
+| Bot OAuth scopes    | `users:read`, `users:read.email`, `chat:write`, `channels:read`, `commands` |
 
 Invite the bot to the channel it should post to, and copy that channel's ID
 into `SLACK_PRIVATE_CHANNEL_ID`.
@@ -251,6 +253,33 @@ validated at startup.
 | `ADMIN_API_KEY`               |    no    | —              | If set, the admin API requires this in an `X-API-Key` header |
 
 ---
+
+## Slack commands
+
+Trigger an analysis on demand from inside Slack — no terminal needed:
+
+```
+/analyze @user      → analyze a specific member
+/analyze            → analyze yourself
+```
+
+The bot runs the full pipeline and posts the report card into the channel where
+you ran the command (falling back to `SLACK_PRIVATE_CHANNEL_ID` if it isn't a
+member there). This is the cleanest way to demo the project live.
+
+**One-time setup** (in your app at api.slack.com/apps):
+
+1. **Slash Commands → Create New Command**
+   - Command: `/analyze`
+   - Short description: `Analyze a member's product fit`
+   - Usage hint: `[@user]`
+   - Check **"Escape channels, users, and links sent to your app"** — this makes
+     `@user` arrive as an ID the bot can resolve.
+   - With Socket Mode on, no Request URL is required.
+2. **Reinstall the app** to the workspace when prompted (this grants the
+   `commands` scope), then restart the bot.
+
+Works over Socket Mode, so no public URL or hosting is needed.
 
 ## HTTP API
 

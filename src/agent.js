@@ -14,6 +14,7 @@ import { log } from './logger.js';
 import { initDatabase, closeDatabase } from './db.js';
 import { makeGetUserInfo } from './slack/users.js';
 import { registerSlackEvents } from './slack/events.js';
+import { registerSlackCommands } from './slack/commands.js';
 import { processMember } from './pipeline.js';
 import { createServer } from './server.js';
 
@@ -41,6 +42,13 @@ export class SlackAIAgent {
     registerSlackEvents(this.slackApp, {
       getUserInfo: this.getUserInfo,
       processMember: this.processMember,
+    });
+
+    // `/analyze @user` — trigger the pipeline on demand from inside Slack.
+    registerSlackCommands(this.slackApp, {
+      getUserInfo: this.getUserInfo,
+      processMember: this.processMember,
+      postMessage: this.postMessage,
     });
 
     this.httpApp = createServer({ postMessage: this.postMessage });
