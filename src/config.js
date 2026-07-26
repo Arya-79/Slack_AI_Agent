@@ -37,11 +37,20 @@ export const config = {
     channelId: env.SLACK_PRIVATE_CHANNEL_ID,
   },
 
-  openai: {
-    apiKey: env.OPENAI_API_KEY,
-    model: env.OPENAI_MODEL || 'gpt-4o-mini',
-    temperature: Number.parseFloat(env.OPENAI_TEMPERATURE ?? '0.3'),
-    maxRetries: int(env.OPENAI_MAX_RETRIES, 3),
+  // The analysis LLM. `provider` picks where the model runs; all three are
+  // spoken to through the OpenAI-compatible API, so no extra SDKs are needed:
+  //   openai — OpenAI (needs OPENAI_API_KEY, paid)
+  //   groq   — Groq (needs GROQ_API_KEY, free tier, no card, very fast)
+  //   ollama — a local Ollama server (no key, fully offline)
+  llm: {
+    provider: (env.LLM_PROVIDER || 'openai').toLowerCase(),
+    // Optional model override; each provider has a sensible default otherwise.
+    model: env.LLM_MODEL || env.OPENAI_MODEL || null,
+    temperature: Number.parseFloat(env.LLM_TEMPERATURE ?? env.OPENAI_TEMPERATURE ?? '0.3'),
+    maxRetries: int(env.LLM_MAX_RETRIES ?? env.OPENAI_MAX_RETRIES, 3),
+    openaiApiKey: env.OPENAI_API_KEY,
+    groqApiKey: env.GROQ_API_KEY,
+    ollamaBaseUrl: env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
   },
 
   database: {
@@ -76,18 +85,30 @@ export const config = {
   },
 };
 
+// Per-provider defaults. All are OpenAI-compatible endpoints.
+const LLM_PROVIDERS = {
+  openai: { defaultModel: 'gpt-4o-mini', baseURL: null, keyName: 'OPENAI_API_KEY' },
+  groq: { defaultModel: 'llama-3.3-70b-versatile', baseURL: 'https://api.groq.com/openai/v1', keyName: 'GROQ_API_KEY' },
+  ollama: { defaultModel: 'llama3.1', baseURL: null, keyName: null }, // baseURL from ollamaBaseUrl; no key
+};
+
 /**
- * Groups of settings that must be present for the app to function. Validated
- * together so the operator sees every problem at once, not one reboot at a time.
+ * Resolve the active LLM into concrete connection settings for a ChatOpenAI
+ * client: which key, which model, which base URL. Pure and testable.
  */
-const REQUIRED = [
-  ['SLACK_BOT_TOKEN', config.slack.botToken],
-  ['SLACK_SIGNING_SECRET', config.slack.signingSecret],
-  ['SLACK_APP_TOKEN', config.slack.appToken],
-  ['SLACK_PRIVATE_CHANNEL_ID', config.slack.channelId],
-  ['OPENAI_API_KEY', config.openai.apiKey],
-  ['DATABASE_URL', config.database.url],
-];
+export function resolveLlm(cfg = config) {
+  const provider = LLM_PROVIDERS[cfg.llm.provider] ? cfg.llm.provider : 'openai';
+  const spec = LLM_PROVIDERS[provider];
+  const model = cfg.llm.model || spec.defaultModel;
+  if (provider === 'groq') {
+    return { provider, apiKey: cfg.llm.groqApiKey, model, baseURL: spec.baseURL };
+  }
+  if (provider === 'ollama') {
+    // Ollama ignores the key but the client requires a non-empty string.
+    return { provider, apiKey: 'ollama', model, baseURL: cfg.llm.ollamaBaseUrl };
+  }
+  return { provider, apiKey: cfg.llm.openaiApiKey, model, baseURL: spec.baseURL };
+}
 
 /**
  * Return the list of problems with the current configuration.
@@ -101,7 +122,6 @@ export function findConfigProblems(cfg = config) {
     ['SLACK_SIGNING_SECRET', cfg.slack.signingSecret],
     ['SLACK_APP_TOKEN', cfg.slack.appToken],
     ['SLACK_PRIVATE_CHANNEL_ID', cfg.slack.channelId],
-    ['OPENAI_API_KEY', cfg.openai.apiKey],
     ['DATABASE_URL', cfg.database.url],
   ];
 
@@ -111,8 +131,19 @@ export function findConfigProblems(cfg = config) {
     }
   }
 
-  if (!Number.isFinite(cfg.openai.temperature) || cfg.openai.temperature < 0 || cfg.openai.temperature > 2) {
-    problems.push(`OPENAI_TEMPERATURE must be a number between 0 and 2 (got "${cfg.openai.temperature}")`);
+  // The LLM key requirement depends on the chosen provider.
+  if (!LLM_PROVIDERS[cfg.llm.provider]) {
+    problems.push(`LLM_PROVIDER must be one of: ${Object.keys(LLM_PROVIDERS).join(', ')} (got "${cfg.llm.provider}")`);
+  } else {
+    const keyName = LLM_PROVIDERS[cfg.llm.provider].keyName;
+    const target = resolveLlm(cfg);
+    if (keyName && (!target.apiKey || String(target.apiKey).trim() === '')) {
+      problems.push(`Missing required environment variable: ${keyName} (needed for LLM_PROVIDER=${cfg.llm.provider})`);
+    }
+  }
+
+  if (!Number.isFinite(cfg.llm.temperature) || cfg.llm.temperature < 0 || cfg.llm.temperature > 2) {
+    problems.push(`LLM_TEMPERATURE must be a number between 0 and 2 (got "${cfg.llm.temperature}")`);
   }
 
   if (!Number.isFinite(cfg.port) || cfg.port <= 0 || cfg.port > 65535) {
@@ -138,7 +169,14 @@ export function validateConfig(cfg = config) {
   return cfg;
 }
 
-// Kept for reference/tests: the canonical list of hard-required variables.
-export const REQUIRED_ENV = REQUIRED.map(([name]) => name);
+// The always-required variables (the LLM key is additionally required based on
+// the chosen provider — see findConfigProblems).
+export const REQUIRED_ENV = [
+  'SLACK_BOT_TOKEN',
+  'SLACK_SIGNING_SECRET',
+  'SLACK_APP_TOKEN',
+  'SLACK_PRIVATE_CHANNEL_ID',
+  'DATABASE_URL',
+];
 
 export default config;

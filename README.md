@@ -38,6 +38,12 @@ Express, and PostgreSQL.
 A new member joins → the bot pulls their profile, researches them, scores product
 fit with an LLM, **posts a report card to Slack**, and **saves every run to Postgres**.
 
+### ▶️ Watch it run
+
+![Slack AI Agent demo — a new member is analyzed and a report card is posted to Slack](SCREENSHOTS/demo.gif)
+
+<sub>Higher quality: <a href="SCREENSHOTS/demo.mp4">watch the MP4 →</a></sub>
+
 **The analysis card in Slack** — fit score, insights, and recommendations, colour-coded by score:
 
 ![Slack analysis card posted to #private1](SCREENSHOTS/OUTPUT1.png)
@@ -52,15 +58,16 @@ fit with an LLM, **posts a report card to Slack**, and **saves every run to Post
 
 ### Run it in 2 minutes
 
-The whole flow needs a Slack app, an OpenAI key, and Postgres. The fastest local path
-(uses a throwaway Docker Postgres — no cloud database required):
+The whole flow needs a Slack app, an LLM key (a **free Groq key** works — no card),
+and Postgres. The fastest local path (throwaway Docker Postgres — no cloud DB required):
 
 ```bash
 # 1. Start a local Postgres (data persists in a named volume)
 docker run --name slack-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=slackdb \
   -p 5432:5432 -v slack-pg-data:/var/lib/postgresql/data -d postgres:16
 
-# 2. Configure — fill Slack + OpenAI keys, and for local Postgres set:
+# 2. Configure. Fill in Slack, your LLM key (LLM_PROVIDER=groq + GROQ_API_KEY is
+#    free), and for the local Postgres above set:
 #    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/slackdb
 #    DATABASE_SSL=false
 cp .env.example .env
@@ -165,7 +172,9 @@ tested without a live connection.
 - **Node.js ≥ 20**
 - A **PostgreSQL** database (e.g. Render, Supabase, or local)
 - A **Slack app** with Socket Mode enabled
-- An **OpenAI API key**
+- An **LLM key** — one of: [OpenAI](https://platform.openai.com/api-keys) (paid),
+  [Groq](https://console.groq.com/keys) (**free, no credit card**), or a local
+  [Ollama](https://ollama.com) install (no key). Set `LLM_PROVIDER` accordingly.
 
 ### Slack app configuration
 
@@ -228,29 +237,32 @@ every missing variable at once instead of crashing later:
 All variables are read in [`src/config.js`](src/config.js). Required ones are
 validated at startup.
 
-| Variable                      | Required | Default        | Description                                                  |
-| ----------------------------- | :------: | -------------- | ------------------------------------------------------------ |
-| `SLACK_BOT_TOKEN`             |   yes    | —              | Bot token (`xoxb-…`)                                         |
-| `SLACK_APP_TOKEN`             |   yes    | —              | App-level token (`xapp-…`) for Socket Mode                   |
-| `SLACK_SIGNING_SECRET`        |   yes    | —              | App signing secret                                           |
-| `SLACK_PRIVATE_CHANNEL_ID`    |   yes    | —              | Channel the report is posted to                              |
-| `OPENAI_API_KEY`              |   yes    | —              | OpenAI API key                                               |
-| `DATABASE_URL`                |   yes    | —              | PostgreSQL connection string                                 |
-| `OPENAI_MODEL`                |    no    | `gpt-4o-mini`  | Chat model                                                   |
-| `OPENAI_TEMPERATURE`          |    no    | `0.3`          | Sampling temperature (0–2)                                   |
-| `OPENAI_MAX_RETRIES`          |    no    | `3`            | Retry attempts on transient LLM failures                     |
-| `DATABASE_SSL`                |    no    | `true`         | Set `false` for a locally-trusted DB without TLS             |
-| `DATABASE_POOL_MAX`           |    no    | `10`           | Max pooled connections                                       |
-| `COMPANY_NAME`                |    no    | `Your Company` | Used in the fit-analysis prompt                              |
-| `COMPANY_PRODUCT`             |    no    | `Your Product` | Used in the fit-analysis prompt                              |
-| `RESEARCH_ENABLED`            |    no    | `true`         | Toggle company/GitHub research                               |
-| `DEDUPE_WINDOW_HOURS`         |    no    | `24`           | Skip re-analysis of a member seen within this window         |
-| `RESEARCH_HTTP_TIMEOUT_MS`    |    no    | `5000`         | Timeout for research HTTP calls                              |
-| `RESEARCH_MAX_RESPONSE_BYTES` |    no    | `524288`       | Cap on bytes read from a company site                        |
-| `PORT`                        |    no    | `3000`         | HTTP server port                                             |
-| `NODE_ENV`                    |    no    | `production`   | `development` enables the dev test endpoint                  |
-| `LOG_LEVEL`                   |    no    | `info`         | `debug` \| `info` \| `warn` \| `error`                       |
-| `ADMIN_API_KEY`               |    no    | —              | If set, the admin API requires this in an `X-API-Key` header |
+| Variable                      | Required | Default        | Description                                                           |
+| ----------------------------- | :------: | -------------- | --------------------------------------------------------------------- |
+| `SLACK_BOT_TOKEN`             |   yes    | —              | Bot token (`xoxb-…`)                                                  |
+| `SLACK_APP_TOKEN`             |   yes    | —              | App-level token (`xapp-…`) for Socket Mode                            |
+| `SLACK_SIGNING_SECRET`        |   yes    | —              | App signing secret                                                    |
+| `SLACK_PRIVATE_CHANNEL_ID`    |   yes    | —              | Channel the report is posted to                                       |
+| `DATABASE_URL`                |   yes    | —              | PostgreSQL connection string                                          |
+| `LLM_PROVIDER`                |    no    | `openai`       | `openai` \| `groq` (free) \| `ollama` (local)                         |
+| `OPENAI_API_KEY`              |  cond.   | —              | Required when `LLM_PROVIDER=openai`                                   |
+| `GROQ_API_KEY`                |  cond.   | —              | Required when `LLM_PROVIDER=groq` (free, no card)                     |
+| `LLM_MODEL`                   |    no    | per-provider   | Override the model (defaults: gpt-4o-mini / llama-3.3-70b / llama3.1) |
+| `LLM_TEMPERATURE`             |    no    | `0.3`          | Sampling temperature (0–2)                                            |
+| `LLM_MAX_RETRIES`             |    no    | `3`            | Retry attempts on transient LLM failures                              |
+| `OLLAMA_BASE_URL`             |    no    | `…:11434/v1`   | Ollama endpoint (only for `LLM_PROVIDER=ollama`)                      |
+| `DATABASE_SSL`                |    no    | `true`         | Set `false` for a locally-trusted DB without TLS                      |
+| `DATABASE_POOL_MAX`           |    no    | `10`           | Max pooled connections                                                |
+| `COMPANY_NAME`                |    no    | `Your Company` | Used in the fit-analysis prompt                                       |
+| `COMPANY_PRODUCT`             |    no    | `Your Product` | Used in the fit-analysis prompt                                       |
+| `RESEARCH_ENABLED`            |    no    | `true`         | Toggle company/GitHub research                                        |
+| `DEDUPE_WINDOW_HOURS`         |    no    | `24`           | Skip re-analysis of a member seen within this window                  |
+| `RESEARCH_HTTP_TIMEOUT_MS`    |    no    | `5000`         | Timeout for research HTTP calls                                       |
+| `RESEARCH_MAX_RESPONSE_BYTES` |    no    | `524288`       | Cap on bytes read from a company site                                 |
+| `PORT`                        |    no    | `3000`         | HTTP server port                                                      |
+| `NODE_ENV`                    |    no    | `production`   | `development` enables the dev test endpoint                           |
+| `LOG_LEVEL`                   |    no    | `info`         | `debug` \| `info` \| `warn` \| `error`                                |
+| `ADMIN_API_KEY`               |    no    | —              | If set, the admin API requires this in an `X-API-Key` header          |
 
 ---
 
@@ -378,13 +390,13 @@ data, and the model is instructed to ignore any instructions embedded in it.
 
 ## Troubleshooting
 
-| Symptom                      | Check                                                                 |
-| ---------------------------- | --------------------------------------------------------------------- |
-| Exits with a config error    | Fill in every variable it lists; see [`.env.example`](.env.example)   |
-| Slack events not received    | Socket Mode on, app installed, events subscribed, scopes granted      |
-| Nothing posted on join       | Bot is a member of `SLACK_PRIVATE_CHANNEL_ID`; check `chat:write`     |
-| Report always shows degraded | The LLM call failed — check `OPENAI_API_KEY` and quota                |
-| DB connection failed         | `DATABASE_URL` correct and reachable; `DATABASE_SSL` matches provider |
+| Symptom                      | Check                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| Exits with a config error    | Fill in every variable it lists; see [`.env.example`](.env.example)                         |
+| Slack events not received    | Socket Mode on, app installed, events subscribed, scopes granted                            |
+| Nothing posted on join       | Bot is a member of `SLACK_PRIVATE_CHANNEL_ID`; check `chat:write`                           |
+| Report always shows degraded | The LLM call failed — check your provider key (`GROQ_API_KEY` / `OPENAI_API_KEY`) and quota |
+| DB connection failed         | `DATABASE_URL` correct and reachable; `DATABASE_SSL` matches provider                       |
 
 ---
 

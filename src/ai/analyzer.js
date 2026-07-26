@@ -9,7 +9,7 @@
 
 import { ChatOpenAI } from '@langchain/openai';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import { config } from '../config.js';
+import { config, resolveLlm } from '../config.js';
 import { log } from '../logger.js';
 
 const SYSTEM = `You are a go-to-market analyst. You evaluate a newly joined community member for how well they fit a company's commercial product, using only the facts provided.
@@ -103,11 +103,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let sharedModel = null;
 function defaultModel() {
   if (!sharedModel) {
+    // All supported providers (openai / groq / ollama) speak the OpenAI API,
+    // so one client covers them — only the key, model, and base URL differ.
+    const target = resolveLlm(config);
     sharedModel = new ChatOpenAI({
-      model: config.openai.model,
-      temperature: config.openai.temperature,
-      apiKey: config.openai.apiKey,
+      model: target.model,
+      temperature: config.llm.temperature,
+      apiKey: target.apiKey,
+      ...(target.baseURL ? { configuration: { baseURL: target.baseURL } } : {}),
     });
+    log.info('llm_provider', { provider: target.provider, model: target.model });
   }
   return sharedModel;
 }
@@ -121,7 +126,7 @@ export async function analyzeMember(member, researchData, deps = {}) {
   const model = deps.model || defaultModel();
   const messages = buildMessages(member, researchData);
 
-  const maxAttempts = Math.max(1, config.openai.maxRetries);
+  const maxAttempts = Math.max(1, config.llm.maxRetries);
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
