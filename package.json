@@ -1,16 +1,26 @@
 {
-  "name": "slack_ai_agent",
+  "name": "slack-ai-agent",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Automated Slack onboarding assistant: detects new members, researches them, scores product fit with an LLM, and posts a report card to Slack.",
   "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "NODE_ENV=development node --watch index.js",
+    "db:check": "node scripts/db-check.js",
+    "test": "node --test test/*.test.js",
+    "test:watch": "node --test --watch test/*.test.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run lint && npm run format:check && npm test"
   },
-  "author": "",
+  "author": "Arya Chimurkar",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@langchain/core": "^1.1.48",
     "@langchain/openai": "^1.4.7",
@@ -20,5 +30,12 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pg": "^8.21.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.14.0",
+    "eslint": "^9.14.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.3.3"
   }
 }
